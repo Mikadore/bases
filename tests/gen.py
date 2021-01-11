@@ -12,12 +12,12 @@ def encode_case(bytes, base):
         s += (delim + "0x{:X}".format(byte))
         delim = ','
 
-    s += f"}};\n\t\tREQUIRE(bases::converter<bases::bases::BASE{base}>::encode((std::uint8_t*) TEST_DATA, {len(bytes)}) == \""
+    s += f"}};\n\t\tREQUIRE(bases::converter<bases::base::BASE{base}>::encode((std::uint8_t*) TEST_DATA, {len(bytes)}) == \""
     
     basestr = base64.b64encode(bytes).decode('ascii')
     
-    s +=  f"{basestr}\");\n\t\tauto bytes = bases::converter<bases::bases::BASE{base}>::decode(\"{basestr}\", {len(basestr)});\n\t\t"
-    s += f"REQUIRE(std::equal(std::begin(TEST_DATA), std::end(TEST_DATA), std::begin(bytes)));\n\t}}\n"
+    s +=  f"{basestr}\");\n\t\tauto bytes = bases::converter<bases::base::BASE{base}>::decode(\"{basestr}\", {len(basestr)});\n\t\t"
+    s += f"REQUIRE(std::equal(std::begin(TEST_DATA), std::end(TEST_DATA), std::begin(*bytes)));\n\t}}\n"
 
     return s
 
