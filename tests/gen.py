@@ -30,7 +30,7 @@ if __name__ == "__main__":
             +   " * (c) Mikdore 2021 \n"
             +   " * The content of this file has been automatically generated and is licensed under the Boost Software License\n"
             +   " */\n"
-            +   "#include <bases.hpp>\n#include <cstdint>\n"
+            +   "#include <bases/bases.hpp>\n#include <cstdint>\n"
             +   "#include <catch2/catch.hpp>\nTEST_CASE(\"Base64 encoding\")\n{\n"
             )
             for j in range(1, 512):

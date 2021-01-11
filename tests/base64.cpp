@@ -14,3 +14,8 @@ TEST_CASE("Base64 Test Vectors")
     REQUIRE(bases::b64encode("fooba"sv)    == "Zm9vYmE=");
     REQUIRE(bases::b64encode("foobar"sv)   == "Zm9vYmFy");
 }
+
+TEST_CASE("Base64 Edge Cases")
+{
+    
+}
