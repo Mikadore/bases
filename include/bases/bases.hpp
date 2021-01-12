@@ -30,14 +30,23 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <type_traits>
 #include <stdexcept>
 #include <optional>
+#include <concepts>
 
 namespace bases
 {
+	/**
+	 *  Pre-requisite asserrs
+	 */ 
+	constexpr char ascii[] = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+	static_assert(std::all_of(std::begin(ascii), std::end(ascii) - 1, [i = 32] (auto c) mutable {
+		return c == i++;
+	}), "Characters are not ascii compatible.");
 
 	enum class base
 	{
@@ -48,7 +57,7 @@ namespace bases
 	
 	enum class error
 	{
-		NONE,
+		NONE = 0,
 		UNKNOWN,
 		BAD_LENGTH,
 		BAD_PAD,
@@ -57,22 +66,27 @@ namespace bases
 
 	struct decode_error
 	{
+		constexpr decode_error() = default;
+		constexpr decode_error(error, std::size_t, char);
+
 		constexpr error 		type() 		const noexcept;
 		constexpr std::size_t 	location() 	const noexcept;
 		constexpr char 			character()	const noexcept;
 
 		private:
-			error 		err_type;
-			std::size_t pos;
-			char 		ch;
+			error 		err_type	= error::NONE;
+			std::size_t pos 		= 0;
+			char 		ch			= 0;
 	};
 
-	template<typename ValueType, typename ErrorType = error>
+	
+
+	template<typename ValueType, std::default_initializable ErrorType = error>
 	struct error_opt : public std::optional<ValueType>
 	{
 
 		error_opt(ValueType type);
-		error_opt(std::nullopt_t, ErrorType err);
+		error_opt(ErrorType err);
 
 		constexpr bool 				error() 		const noexcept;
 		constexpr const ErrorType& 	get_error() 	const noexcept;
@@ -92,7 +106,7 @@ namespace bases
 		public:
 
 		template<std::size_t N>
-		BASEDecodeTable(const char (&alphabet)[N]);
+		constexpr BASEDecodeTable(const char (&alphabet)[N]);
 
 		constexpr inline std::uint8_t operator[](char) const noexcept;
 	};
@@ -102,8 +116,11 @@ namespace bases
 	constexpr static char BASE64URLSafe[] 	= "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 	constexpr static auto BASE64Pad			= '=';
 
-	const static BASEDecodeTable BASE64DecodeTable;
-	//B32
+	const static BASEDecodeTable BASE64DecodeTable{ BASE64Alphabet };
+
+	/**
+	 *  Type helpers
+	 */
 
 	template<typename T>
 	concept CharLike = std::is_integral_v<std::remove_reference_t<std::remove_cv_t<T>>> && sizeof(T) == 1;
@@ -132,6 +149,16 @@ namespace bases
 		t.size();
 	} && CharLike<decltype(*std::declval<T>().data())>;
 
+	template<typename T, ContainerOut<T> C>
+	constexpr bool converter_noexcept = 	noexcept(std::declval<C>().push_back(T{}))
+										&& 	noexcept(std::declval<C>().reserve(std::size_t{}))
+										&& 	noexcept(T{});
+
+
+	/**
+	 * 	Converter templates
+	 */ 
+
 	template<base Base>
 	struct converter	
 	{
@@ -144,10 +171,12 @@ namespace bases
 		converter() = delete;
 
 		template<StringLike string_type = std::string>
-		static error_opt<string_type> 		encode(const std::uint8_t*, std::size_t);
+		constexpr static error_opt<string_type> 					encode(const std::uint8_t*, std::size_t)
+																			noexcept(converter_noexcept<char, string_type>);
 
 		template<ByteContainerOut container_type = std::vector<std::uint8_t>>
-		static error_opt<container_type> 	decode(const char*, std::size_t);	
+		constexpr static error_opt<container_type, decode_error> 	decode(const char*, std::size_t)
+																			noexcept(converter_noexcept<std::uint8_t, container_type>);
 	};
 
 	template<>
@@ -156,10 +185,14 @@ namespace bases
 		converter() = delete;
 
 		template<StringLike string_type = std::string>
-		static error_opt<string_type> 		encode(const std::uint8_t*, std::size_t);
+		constexpr static error_opt<string_type> 					encode(const std::uint8_t*, std::size_t)
+																			noexcept(converter_noexcept<char, string_type>);
+
 
 		template<ByteContainerOut container_type = std::vector<std::uint8_t>>
-		static error_opt<container_type> 	decode(const char*, std::size_t);
+		constexpr static error_opt<container_type, decode_error> 	decode(const char*, std::size_t)
+																			noexcept(converter_noexcept<std::uint8_t, container_type>);
+
 	};
 
 	template<>
@@ -168,10 +201,13 @@ namespace bases
 		converter() = delete;
 
 		template<StringLike string_type = std::string>
-		static error_opt<string_type> 		encode(const std::uint8_t*, std::size_t);
+		constexpr static error_opt<string_type> 					encode(const std::uint8_t*, std::size_t) 
+																			noexcept(converter_noexcept<char, string_type>);
 
 		template<ByteContainerOut container_type = std::vector<std::uint8_t>>
-		static error_opt<container_type> 	decode(const char*, std::size_t);
+		constexpr static error_opt<container_type, decode_error> 	decode(const char*, std::size_t)
+																			noexcept(converter_noexcept<std::uint8_t, container_type>);
+	
 	};
 
 
@@ -184,7 +220,7 @@ namespace bases
 	}
 
 	template<ByteContainerOut container_type = std::vector<std::uint8_t>>
-	error_opt<container_type> b64decode(std::string_view sv)
+	error_opt<container_type, decode_error> b64decode(std::string_view sv)
 	{
 		return converter<base::BASE64>::decode(sv.data(), sv.size());
 	}
@@ -195,38 +231,43 @@ namespace bases
 
 namespace bases
 {
-	template<typename ValueType, typename ErrorType>
+	template<typename ValueType, std::default_initializable ErrorType>
 	error_opt<ValueType, ErrorType>::error_opt(ValueType val)
-	: std::optional<ValueType>(std::move(val))
+	: std::optional<ValueType>(std::move(val)), error_value{}, error_present(false)
 	{}
 
-	template<typename ValueType, typename ErrorType>
-	error_opt<ValueType, ErrorType>::error_opt(std::nullopt_t nullopt, ErrorType er)
-	: std::optional<ValueType>(nullopt), error_value(std::move(er)), error_present(true)
+	template<typename ValueType, std::default_initializable ErrorType>
+	error_opt<ValueType, ErrorType>::error_opt(ErrorType er)
+	: std::optional<ValueType>(std::nullopt), error_value(std::move(er)), error_present(true)
 	{}
 
-	template<typename T, typename ErrorType>
+	template<typename T, std::default_initializable ErrorType>
 	constexpr bool error_opt<T, ErrorType>::error() const noexcept 
 	{ return error_present; }
 	
-	template<typename ValueType, typename ErrorType>
+	template<typename ValueType, std::default_initializable ErrorType>
 	constexpr const ErrorType& error_opt<ValueType, ErrorType>::get_error() const noexcept
 	{ return error_value; }
 
-	constexpr char decode_error::character() const noexcept
-	{
-		return ch;
-	}
+	constexpr decode_error::decode_error(error type, std::size_t pos, char c)
+	:  err_type(type), pos(pos), ch(c)
+	{}
 
-	constexpr std::size_t decode_error::location() const noexcept 
-	{
-		return pos;
-	}
+	constexpr error			decode_error::type() 		const noexcept
+	{ return err_type; }
+
+	constexpr char 			decode_error::character() 	const noexcept
+	{ return ch; }
+
+	constexpr std::size_t 	decode_error::location() 	const noexcept 
+	{ return pos; }
+
+	//helper type not intended to be used by users
 
 	template<std::size_t N>
-	BASEDecodeTable::BASEDecodeTable(const char (&alphabet)[N])
+	constexpr BASEDecodeTable::BASEDecodeTable(const char (&alphabet)[N])
 	{
-		static_assert(N <= 128 && N > 0, "The alphabet must contain only unique ASCII symbols");
+		static_assert(N <= 96 && N > 0, "The alphabet must contain only unique, printable ASCII symbols");
 		
 		std::fill(std::begin(table), std::end(table), 0xFF);
 		table['='] = 0x40; //special - so we can check for it's presence
@@ -238,13 +279,12 @@ namespace bases
 	}
  
 	constexpr inline std::uint8_t BASEDecodeTable::operator[](char c) const noexcept
-	{
-		return table[c];
-	}
+	{ return table[c]; }
 
 
 	template<StringLike string_type>
 	constexpr inline error BASE64FinalChunk(string_type& out, std::size_t size, std::size_t i, const std::uint8_t* data)
+								noexcept(converter_noexcept<char, string_type>)
 	{
 		switch(size)
 		{
@@ -271,9 +311,10 @@ namespace bases
 	}
 
 	template<StringLike string_type>
-	error_opt<string_type> converter<base::BASE64>::encode(const std::uint8_t* data, std::size_t size)
+	constexpr error_opt<string_type> converter<base::BASE64>::encode(const std::uint8_t* data, std::size_t size)
+																noexcept(converter_noexcept<char, string_type>)
 	{
-		string_type out;
+		string_type out{};
 
 		out.reserve( ((4 * size / 3) + 3) & ~3 ); //output length including padding
 
@@ -282,7 +323,7 @@ namespace bases
 			if(auto err = BASE64FinalChunk(out, size, 0, data); err == error::NONE)
 			{
 				return error_opt{out};
-			} else return error_opt<string_type>{std::nullopt, err};
+			} else return error_opt<string_type>{err};
 		}
 
 		auto i = 0ul;
@@ -300,41 +341,58 @@ namespace bases
 		if(auto err = BASE64FinalChunk(out, size - i, i, data); err == error::NONE)
 		{
 			return error_opt{out};
-		} else return error_opt<string_type>{std::nullopt, err};
+		} else return error_opt<string_type>{err};
 	}
 
 	template<ByteContainerOut container_type>
-	error_opt<container_type> converter<base::BASE64>::decode(const char* data, std::size_t size)
+	constexpr error_opt<container_type, decode_error> converter<base::BASE64>::decode(const char* data, std::size_t size)
+																				noexcept(converter_noexcept<std::uint8_t, container_type>)
 	{
-		container_type out;
+		container_type out{};
 		
 		if(size % 4 != 0)
 		{
-			return error_opt<container_type>{std::nullopt, error::BAD_LENGTH};
+			return error_opt<container_type, decode_error>{decode_error(error::BAD_LENGTH, 0, 0)};
 		}
 
 		out.reserve((size/4)*3);
 		
 		auto i = 0ul;
-		
+
 		for(; (size - i) >= 4; i += 4)
 		{
 			auto a = BASE64DecodeTable[data[i	 ]];
 			auto b = BASE64DecodeTable[data[i + 1]];
 			auto c = BASE64DecodeTable[data[i + 2]];
+
 			auto d = BASE64DecodeTable[data[i + 3]];
 
 			if((a | b | c | d) & 0x80) //highest bit == bad character
 			{
+				auto index = 0ul;
+				char c = 0;
 
+				if		(a & 0x80)
+					index = i, c = data[i];
+				else if	(b & 0x80)
+					index = i + 1, c = data[i + 1]; 
+				else if	(c & 0x80)
+					index = i + 2, c = data[i + 2];
+				else if	(d & 0x80)
+					index = i + 3, c=  data[i + 3];
+
+				return error_opt<container_type, decode_error>{decode_error(error::BAD_CHARACTER, index, c)};
 			}
 			if((a | b | c | d) & 0x40) //pad character == last block
 			{
-				if(((a | b) & 0x40) || ((c & 0x40) && !(d & 0x40)))
+				if((a | b) & 0x40)
 				{
-
+					return error_opt<container_type, decode_error>{decode_error(error::BAD_PAD, i, data[i])};
 				};
-
+				if((c & 0x40) && !(d & 0x40))
+				{
+					return error_opt<container_type, decode_error>{decode_error(error::BAD_PAD, i + 3, data[i + 3])};
+				}
 
 				if(c & 0x40)
 				{
